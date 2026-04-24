@@ -325,3 +325,31 @@ labelBalance.addEventListener('click', () => {
 
   console.log(movementsUI);
 });
+
+let totalBalance = accounts.reduce((a, acc) => {
+  return a + acc.movements.reduce((ac, mov) => (mov > 0 ? ac + mov : ac), 0);
+}, 0);
+
+console.log(totalBalance);
+
+let oneThousandAmountDeposits = accounts.flatMap(acc => {
+  return acc.movements.filter(mov => mov > 1000);
+});
+
+console.log(oneThousandAmountDeposits.length);
+
+let totalTransactionsSum = accounts
+  .flatMap(acc => acc.movements)
+  .reduce(
+    (total, mov) => {
+      if (mov > 0) {
+        total.deposits += mov;
+      } else {
+        total.withdrawls += Math.abs(mov);
+      }
+      return total;
+    },
+    { deposits: 0, withdrawls: 0 },
+  );
+
+console.log(totalTransactionsSum);
