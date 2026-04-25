@@ -88,7 +88,7 @@ const movements = [200, 450, -400, 3000, -650, -130, 70, 1300];
 const daysPassed = (date1, date2) =>
   Math.round(Math.abs((date1 - date2) / (1000 * 60 * 60 * 24)));
 
-function getDisplayDate(now) {
+function getDisplayDate(now, locale) {
   const daysPass = daysPassed(now, new Date());
   console.log('days pass:', daysPass);
 
@@ -99,15 +99,7 @@ function getDisplayDate(now) {
   } else if (daysPass <= 7) {
     return `${daysPass} ago`;
   } else {
-    let day = now.getDate();
-    day = String(day).length === 1 ? `${day}`.padStart(2, 0) : day;
-    let month = now.getMonth() + 1;
-    month = String(month).length === 1 ? `${month}`.padStart(2, 0) : month;
-    const year = now.getFullYear();
-
-    console.log(month);
-
-    return `${day}/${month}/${year}`;
+    return new Intl.DateTimeFormat(locale).format(now);
   }
 }
 
@@ -131,14 +123,19 @@ const displayMovements = function (account, sort = false) {
   movs.forEach((movementObj, i) => {
     const type = movementObj.movement > 0 ? 'deposit' : 'withdrawal';
     let now = new Date(movementObj.date);
-    const displayDate = getDisplayDate(now);
+    const displayDate = getDisplayDate(now, account.locale);
+    const formattedMovement = formatCurr(
+      movementObj.movement,
+      account.locale,
+      account.currency,
+    );
 
     const html = `
     <div class="movements__row">
 
       <div class="movements__type movements__type--${type}">${i + 1} ${type}</div>
       <div class="movements__date">${displayDate}</div>
-      <div class="movements__value">${movementObj.movement.toFixed(2)}</div>
+      <div class="movements__value">${formattedMovement}</div>
 
     </div>
     `;
@@ -178,6 +175,16 @@ const withdrawals = movements.filter(mov => mov < 0);
 
 console.log(withdrawals);
 
+const formatCurr = (value, locale, currency) => {
+  const options = {
+    style: 'currency',
+    currency: currency,
+  };
+
+  const formatted = new Intl.NumberFormat(locale, options).format(value);
+  return formatted;
+};
+
 const calcBalance = account => {
   account.balance = account.movements.reduce((acc, mov) => acc + mov, 0);
   labelBalance.textContent = `${account.balance} EUR`;
@@ -213,45 +220,82 @@ function calcDisplaySummary(acc) {
     .filter(mov => mov > 0)
     .map(mov => (mov * acc.interestRate) / 100)
     .reduce((acc, mov) => (mov > 1 ? acc + mov : acc), 0);
-  labelSumIn.textContent = `${sumIn.toFixed(2)} EUR`;
-  labelSumOut.textContent = `${sumOut.toFixed(2)} EUR`;
+  labelSumIn.textContent = `${formatCurr(sumIn, acc.locale, acc.currency)}`;
+  labelSumOut.textContent = `${formatCurr(sumOut, acc.locale, acc.currency)}`;
   console.log('interest', interest.toFixed(2));
 
-  labelSumInterest.textContent = `${interest.toFixed(2)} EUR`;
+  labelSumInterest.textContent = `${formatCurr(interest, acc.locale, acc.currency)}`;
 }
 
 /////////////////////////////////////////////////
+let currentAccount;
+
+console.log(currentAccount);
 
 function displayUI(currentAccount) {
   displayMovements(currentAccount);
   calcBalance(currentAccount);
   calcDisplaySummary(currentAccount);
 }
+
+function getRemainingTime(milliseconds) {
+  let mins = Math.floor(milliseconds / (1000 * 60));
+  let seconds = Math.floor((milliseconds % (mins * 1000 * 60)) / 1000);
+  let formatted = `You will be logged out in ${mins} mins ${seconds} seconds`;
+  return formatted;
+}
+
+let loggedInTime;
+let timerId;
+let difference = 0;
+const maxLoggedInTime = 300; //seconds
+const loggedOutTimer = document.querySelector('.logout-timer');
+
+function startTimer() {
+  timerId = setInterval(() => {
+    difference = getSecondsDifference(loggedInTime, new Date());
+    if (difference >= maxLoggedInTime) {
+      logout();
+    } else {
+      loggedOutTimer.textContent = getRemainingTime(
+        (maxLoggedInTime - difference) * 1000,
+      );
+    }
+  }, 1000);
+}
+
+function getSecondsDifference(date1, date2) {
+  const difference = Math.round(Math.abs((date1 - date2) / 1000));
+  return difference;
+}
+function logout() {
+  clearInterval(timerId);
+  containerApp.style.opacity = 0;
+}
+
 // Event handler
-let currentAccount;
 
 btnLogin.addEventListener('click', function (e) {
+  loggedInTime = new Date();
+  startTimer();
   e.preventDefault();
-
-  const now = new Date();
-  let day = now.getDate();
-  day = String(day).length === 1 ? `${day}`.padStart(2, 0) : day;
-  let month = now.getMonth() + 1;
-  month = String(month).length === 1 ? `${month}`.padStart(2, 0) : month;
-  const year = now.getFullYear();
-  let hour = now.getHours();
-  hour = String(hour).length === 1 ? `${hour}`.padStart(2, 0) : hour;
-  let min = now.getMinutes();
-  min = String(min).length === 1 ? `${min}`.padStart(2, 0) : min;
-
-  console.log(month);
-
-  labelDate.textContent = `${day}/${month}/${year}, ${hour}:${min}`;
-
   currentAccount = accounts.find(
     acc => acc.username === inputLoginUsername.value,
   );
-  console.log(currentAccount);
+  const now = new Date();
+  const options = {
+    hour: 'numeric',
+    minute: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    year: 'numeric',
+    // weekday: 'long',
+  };
+
+  labelDate.textContent = new Intl.DateTimeFormat(
+    currentAccount.locale,
+    options,
+  ).format(now);
 
   if (currentAccount?.pin === +inputLoginPin.value) {
     //CLEAR FIELDS
@@ -334,9 +378,11 @@ btnLoan.addEventListener('click', function (e) {
 
   if (amount > 0 && currentAccount.movements.some(mov => mov >= amount * 0.1)) {
     //add movement
-    currentAccount.movements.push(amount);
-    currentAccount.movementsDates.push(new Date().toISOString());
-    displayUI(currentAccount);
+    setTimeout(() => {
+      currentAccount.movements.push(amount);
+      currentAccount.movementsDates.push(new Date().toISOString());
+      displayUI(currentAccount);
+    }, 2500);
   }
 
   inputLoanAmount.value = '';
@@ -418,8 +464,3 @@ let totalTransactionsSum = accounts
     },
     { deposits: 0, withdrawls: 0 },
   );
-
-const future = new Date(2037, 10, 19, 15, 23);
-console.log(+future);
-
-console.log(daysPassed(new Date(2037, 3, 14), new Date(2037, 3, 24)));
